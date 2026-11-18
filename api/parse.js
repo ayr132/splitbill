@@ -2,10 +2,8 @@
 // Reads shared-spending notes (text and/or images) with Claude and returns
 // structured expenses for the Split Bill app.
 //
-// Environment variables (set in Vercel → Project → Settings → Environment Variables):
-//   ANTHROPIC_API_KEY      required
-//   SPLITBILL_ACCESS_CODE  optional; if set, callers must send it in the x-access-code header
-import { timingSafeEqual } from "node:crypto";
+// Environment variable (set in Vercel → Project → Settings → Environment Variables):
+//   ANTHROPIC_API_KEY  required
 import Anthropic from "@anthropic-ai/sdk";
 
 const MAX_IMAGES = 4;
@@ -67,22 +65,12 @@ How to fill the fields:
 
 Only use amounts that appear in the input. When something is unclear, give your best reading and mention it in notes.`;
 
-function codeMatches(given, expected) {
-    const a = Buffer.from(String(given ?? ""));
-    const b = Buffer.from(expected);
-    return a.length === b.length && timingSafeEqual(a, b);
-}
-
 export default async function handler(req, res) {
     if (req.method !== "POST") {
         res.setHeader("Allow", "POST");
         return res.status(405).json({ error: "bad_input" });
     }
 
-    const accessCode = process.env.SPLITBILL_ACCESS_CODE;
-    if (accessCode && !codeMatches(req.headers["x-access-code"], accessCode)) {
-        return res.status(401).json({ error: "unauthorized" });
-    }
     if (!process.env.ANTHROPIC_API_KEY) {
         return res.status(500).json({ error: "not_configured" });
     }

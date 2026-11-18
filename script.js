@@ -7,7 +7,6 @@ const COLORS = ["#d8a7c0", "#f8c99a", "#b6d7a8", "#a2c4c9", "#c9b6e4", "#f5e08c"
 
 const emptyState = () => ({ title: "", currency: "RM", people: [], expenses: [] });
 const AI_MAX_IMAGES = 4;
-const AI_CODE_KEY = "splitbill-ai-code";
 
 let state = loadState();
 let draft = null;        // expense being edited in the dialog
@@ -678,13 +677,6 @@ $("copyBtn").addEventListener("click", async () => {
 let aiImages = [];   // { mediaType, data (base64), url (data URL for preview) }
 let aiData = null;   // last result from /api/parse
 
-function aiCode() {
-    try { return localStorage.getItem(AI_CODE_KEY) || ""; } catch (_) { return ""; }
-}
-function setAiCode(code) {
-    try { code ? localStorage.setItem(AI_CODE_KEY, code) : localStorage.removeItem(AI_CODE_KEY); } catch (_) { /* ignore */ }
-}
-
 function aiStep(step) {
     $("aiInputStep").classList.toggle("hidden", step !== "input");
     $("aiPreviewStep").classList.toggle("hidden", step !== "preview");
@@ -732,15 +724,12 @@ function setAiLoading(on) {
 }
 
 async function callParse(text) {
-    const headers = { "Content-Type": "application/json" };
-    const code = aiCode();
-    if (code) headers["x-access-code"] = code;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 90000);
     try {
         return await fetch("/api/parse", {
             method: "POST",
-            headers,
+            headers: { "Content-Type": "application/json" },
             signal: controller.signal,
             body: JSON.stringify({
                 text,
@@ -759,17 +748,9 @@ async function runAi() {
     aiError("");
     setAiLoading(true);
     try {
-        let res = await callParse(text);
-        if (res.status === 401) {
-            const code = prompt(t("aiAccessPrompt"), "")?.trim();
-            if (code) {
-                setAiCode(code);
-                res = await callParse(text);
-            }
-        }
+        const res = await callParse(text);
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
-            if (res.status === 401) setAiCode("");
             const key = `aiErr_${body.error}`;
             aiError(window.I18n.STRINGS.en[key] ? t(key) : t("aiErr_failed"));
             return;
