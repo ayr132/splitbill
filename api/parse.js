@@ -8,7 +8,8 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const MAX_IMAGES = 4;
 const MAX_TEXT = 20000;
-const MAX_IMAGE_B64 = 5 * 1024 * 1024; // per image, base64 characters
+const MAX_IMAGE_BYTES = 100 * 1024; // 100 KB per image
+const MAX_IMAGE_B64 = Math.ceil(MAX_IMAGE_BYTES / 3) * 4; // same limit in base64 characters
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 
 const SCHEMA = {
@@ -82,10 +83,12 @@ export default async function handler(req, res) {
     const notesLang = body.lang === "ms" ? "Malay" : "English";
 
     const imagesOk = images.length <= MAX_IMAGES && images.every(img =>
-        img && IMAGE_TYPES.has(img.mediaType) &&
-        typeof img.data === "string" && img.data.length > 0 && img.data.length <= MAX_IMAGE_B64);
+        img && IMAGE_TYPES.has(img.mediaType) && typeof img.data === "string" && img.data.length > 0);
     if ((!text && !images.length) || text.length > MAX_TEXT || !imagesOk) {
         return res.status(400).json({ error: "bad_input" });
+    }
+    if (images.some(img => img.data.length > MAX_IMAGE_B64)) {
+        return res.status(413).json({ error: "image_too_large" });
     }
 
     const content = [
@@ -138,8 +141,9 @@ export default async function handler(req, res) {
             return res.status(429).json({ error: "rate_limited" });
         }
         if (error instanceof Anthropic.BadRequestError) {
+            // Pass the API's reason back so problems are visible without digging through logs.
             console.error("Anthropic bad request:", error.message);
-            return res.status(400).json({ error: "bad_input" });
+            return res.status(400).json({ error: "ai_bad_request", detail: String(error.message).slice(0, 300) });
         }
         if (error instanceof Anthropic.APIError) {
             console.error(`Anthropic API error ${error.status}:`, error.message);

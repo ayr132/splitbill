@@ -7,6 +7,7 @@ const COLORS = ["#d8a7c0", "#f8c99a", "#b6d7a8", "#a2c4c9", "#c9b6e4", "#f5e08c"
 
 const emptyState = () => ({ title: "", currency: "RM", people: [], expenses: [] });
 const AI_MAX_IMAGES = 4;
+const AI_MAX_IMAGE_BYTES = 100 * 1024; // must match api/parse.js
 
 let state = loadState();
 let draft = null;        // expense being edited in the dialog
@@ -698,14 +699,45 @@ async function addAiFiles(files) {
         if (!file.type.startsWith("image/")) continue;
         if (aiImages.length >= AI_MAX_IMAGES) { aiError(t("aiTooMany", { n: AI_MAX_IMAGES })); break; }
         try {
-            // Larger and sharper than receipt thumbnails so small text stays readable.
-            const url = await compressImage(file, 2000, 0.85);
+            const url = await compressToLimit(file, AI_MAX_IMAGE_BYTES);
+            if (!url) { aiError(t("aiErr_image_too_large")); continue; }
             aiImages.push({ mediaType: "image/jpeg", data: url.split(",")[1], url });
         } catch (_) {
             aiError(t("badImage"));
         }
     }
     renderAiThumbs();
+}
+
+// Re-encode an image as JPEG, stepping quality and then size down until it fits in maxBytes.
+// Starts sharp so small handwriting and receipt text stay readable. Returns null if it can't fit.
+function compressToLimit(file, maxBytes) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            URL.revokeObjectURL(img.src);
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+            const bytesOf = url => Math.floor((url.length - url.indexOf(",") - 1) * 3 / 4);
+            let side = Math.min(2000, Math.max(img.width, img.height));
+            while (side >= 400) {
+                const scale = side / Math.max(img.width, img.height);
+                canvas.width = Math.round(img.width * scale);
+                canvas.height = Math.round(img.height * scale);
+                ctx.fillStyle = "#fff"; // transparent PNGs would otherwise turn black
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                for (const q of [0.85, 0.75, 0.65, 0.55]) {
+                    const url = canvas.toDataURL("image/jpeg", q);
+                    if (bytesOf(url) <= maxBytes) return resolve(url);
+                }
+                side = Math.floor(side * 0.8);
+            }
+            resolve(null);
+        };
+        img.onerror = reject;
+        img.src = URL.createObjectURL(file);
+    });
 }
 
 function openAi() {
@@ -752,7 +784,7 @@ async function runAi() {
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
             const key = `aiErr_${body.error}`;
-            aiError(window.I18n.STRINGS.en[key] ? t(key) : t("aiErr_failed"));
+            aiError(window.I18n.STRINGS.en[key] ? t(key, { detail: body.detail || "" }) : t("aiErr_failed"));
             return;
         }
         if (!Array.isArray(body.expenses) || !body.expenses.length) {
