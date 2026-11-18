@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Split Bill</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="topbar">
+        <div class="wrap">
+            <div class="title-row">
+                <input id="tripTitle" class="trip-title" data-i18n-ph="tripPlaceholder" data-i18n-aria="tripAria" autocomplete="off">
+                <div class="toolbar">
+                    <div class="seg lang-switch" role="group" data-i18n-aria="language">
+                        <button type="button" data-lang="ms" lang="ms">BM</button>
+                        <button type="button" data-lang="en" lang="en">EN</button>
+                    </div>
+                    <label class="currency">
+                        <span data-i18n="currency"></span>
+                        <input type="text" id="currency" maxlength="4" data-i18n-aria="currencyAria">
+                    </label>
+                    <button type="button" class="btn ghost small" id="exampleBtn" data-i18n="loadExample"></button>
+                    <button type="button" class="btn ghost small" id="exportBtn" data-i18n="export"></button>
+                    <label class="btn ghost small file-btn"><span data-i18n="import"></span><input type="file" id="importInput" accept="application/json,.json" hidden></label>
+                    <button type="button" class="btn ghost small danger-text" id="resetBtn" data-i18n="clearAll"></button>
+                </div>
+            </div>
+            <nav class="tabs" role="tablist">
+                <button type="button" class="tab" role="tab" data-tab="shared" data-i18n="tabShared"></button>
+                <button type="button" class="tab" role="tab" data-tab="individual" data-i18n="tabIndividual"></button>
+                <button type="button" class="tab" role="tab" data-tab="owe" data-i18n="tabOwe"></button>
+                <button type="button" class="tab" role="tab" data-tab="summary" data-i18n="tabSummary"></button>
+            </nav>
+        </div>
+    </header>
+
+    <main class="wrap">
+        <!-- Friends (always visible) -->
+        <section class="card people-card">
+            <div class="people-row">
+                <h2 data-i18n="friends"></h2>
+                <ul id="peopleList" class="pills"></ul>
+                <form id="addPersonForm" class="add-person">
+                    <input type="text" id="personName" autocomplete="off" data-i18n-ph="addFriendPh" data-i18n-aria="addFriendAria">
+                    <button type="submit" class="btn small" data-i18n="add"></button>
+                </form>
+            </div>
+        </section>
+
+        <!-- 1. Shared expenses record -->
+        <section class="panel" data-panel="shared">
+            <div class="panel-head">
+                <div>
+                    <h2 data-i18n="sharedTitle"></h2>
+                    <p class="muted" data-i18n="sharedDesc"></p>
+                </div>
+                <button type="button" class="btn" id="addExpenseBtn" data-i18n="addExpense"></button>
+            </div>
+            <div id="expenseList" class="expense-list"></div>
+        </section>
+
+        <!-- 2. Individual expenses record -->
+        <section class="panel" data-panel="individual">
+            <div class="panel-head">
+                <div>
+                    <h2 data-i18n="individualTitle"></h2>
+                    <p class="muted" data-i18n-html="individualDesc"></p>
+                </div>
+            </div>
+            <div id="individualList" class="person-grid"></div>
+        </section>
+
+        <!-- 3. Total amount owed -->
+        <section class="panel" data-panel="owe">
+            <div class="panel-head">
+                <div>
+                    <h2 data-i18n="oweTitle"></h2>
+                    <p class="muted" data-i18n-html="oweDesc"></p>
+                </div>
+            </div>
+            <div class="card table-scroll" id="oweMatrix"></div>
+
+            <div class="settle-grid">
+                <div class="card">
+                    <h3 data-i18n="fewestTitle"></h3>
+                    <p class="muted small-text" data-i18n="fewestDesc"></p>
+                    <ul id="simplifiedList" class="transfers"></ul>
+                </div>
+                <div class="card">
+                    <h3 data-i18n="pairTitle"></h3>
+                    <p class="muted small-text" data-i18n="pairDesc"></p>
+                    <ul id="pairwiseList" class="transfers"></ul>
+                </div>
+            </div>
+
+            <h3 class="sub-head" data-i18n="flowTitle"></h3>
+            <div id="flowList" class="person-grid"></div>
+        </section>
+
+        <!-- 4. Summary -->
+        <section class="panel" data-panel="summary">
+            <div class="panel-head">
+                <div>
+                    <h2 data-i18n="summaryTitle"></h2>
+                    <p class="muted" data-i18n="summaryDesc"></p>
+                </div>
+                <button type="button" class="btn" id="copyBtn" data-i18n="copyBtn"></button>
+            </div>
+            <p class="muted" id="copyStatus" aria-live="polite"></p>
+            <div class="card table-scroll" id="billSummary"></div>
+            <div class="card table-scroll" id="personSummary"></div>
+        </section>
+    </main>
+
+    <!-- Add / edit expense -->
+    <dialog id="expenseDialog" aria-labelledby="dialogTitle">
+        <form id="expenseForm">
+            <h2 id="dialogTitle"></h2>
+            <div id="dialogBody"></div>
+            <p class="error" id="dialogError" aria-live="assertive"></p>
+            <div class="dialog-actions">
+                <button type="button" class="btn ghost danger-text" id="deleteExpenseBtn" data-i18n="delete"></button>
+                <span class="spacer"></span>
+                <button type="button" class="btn ghost" id="cancelBtn" data-i18n="cancel"></button>
+                <button type="submit" class="btn" data-i18n="save"></button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- Receipt viewer -->
+    <dialog id="imageDialog" class="image-dialog">
+        <img id="imageView" alt="" data-i18n-aria="receipt">
+        <form method="dialog"><button class="btn" data-i18n="close"></button></form>
+    </dialog>
+
+    <script src="i18n.js"></script>
+    <script src="calc.js"></script>
+    <script src="example.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
