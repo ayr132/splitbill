@@ -6,6 +6,8 @@ const TAB_KEY = "splitbill-tab";
 const COLORS = ["#d8a7c0", "#f8c99a", "#b6d7a8", "#a2c4c9", "#c9b6e4", "#f5e08c", "#f4a6a6", "#9fc5e8", "#d5c4a1", "#b4e0d4"];
 
 const emptyState = () => ({ title: "", currency: "RM", people: [], expenses: [] });
+const AI_MAX_IMAGES = 4;
+const AI_CODE_KEY = "splitbill-ai-code";
 
 let state = loadState();
 let draft = null;        // expense being edited in the dialog
@@ -60,9 +62,9 @@ function netBadge(cents) {
     return `<span class="net-badge even">${t("allSquare")}</span>`;
 }
 
-function nextColor() {
-    const used = new Set(state.people.map(p => p.color));
-    return COLORS.find(c => !used.has(c)) || COLORS[state.people.length % COLORS.length];
+function nextColor(people = state.people) {
+    const used = new Set(people.map(p => p.color));
+    return COLORS.find(c => !used.has(c)) || COLORS[people.length % COLORS.length];
 }
 
 function updateDocTitle() {
@@ -72,6 +74,7 @@ function updateDocTitle() {
 // ================= Language =================
 function applyLanguage() {
     window.I18n.applyStatic();
+    $("aiDropText").textContent = t("aiDrop", { n: AI_MAX_IMAGES });
     document.querySelectorAll("[data-lang]").forEach(b => {
         const on = b.dataset.lang === window.I18n.getLang();
         b.classList.toggle("active", on);
@@ -87,6 +90,7 @@ document.querySelectorAll("[data-lang]").forEach(b => b.addEventListener("click"
         $("dialogTitle").textContent = t(draft.id ? "editExpenseTitle" : "addExpenseTitle");
         renderDraft();
     }
+    if (aiData && $("aiDialog").open) renderAiPreview();
 }));
 
 // ================= Tabs =================
@@ -668,6 +672,277 @@ $("copyBtn").addEventListener("click", async () => {
         prompt(t("copyThis"), text);
     }
     setTimeout(() => { $("copyStatus").textContent = ""; }, 3000);
+});
+
+// ================= Read with AI =================
+let aiImages = [];   // { mediaType, data (base64), url (data URL for preview) }
+let aiData = null;   // last result from /api/parse
+
+function aiCode() {
+    try { return localStorage.getItem(AI_CODE_KEY) || ""; } catch (_) { return ""; }
+}
+function setAiCode(code) {
+    try { code ? localStorage.setItem(AI_CODE_KEY, code) : localStorage.removeItem(AI_CODE_KEY); } catch (_) { /* ignore */ }
+}
+
+function aiStep(step) {
+    $("aiInputStep").classList.toggle("hidden", step !== "input");
+    $("aiPreviewStep").classList.toggle("hidden", step !== "preview");
+}
+
+function aiError(msg) { $("aiError").textContent = msg || ""; }
+
+function renderAiThumbs() {
+    $("aiThumbs").innerHTML = aiImages.map((img, i) => `
+        <div class="ai-thumb">
+            <img src="${img.url}" alt="">
+            <button type="button" data-remove-ai-image="${i}" aria-label="${esc(t("aiRemoveImage"))}">&times;</button>
+        </div>`).join("");
+}
+
+async function addAiFiles(files) {
+    aiError("");
+    for (const file of files) {
+        if (!file.type.startsWith("image/")) continue;
+        if (aiImages.length >= AI_MAX_IMAGES) { aiError(t("aiTooMany", { n: AI_MAX_IMAGES })); break; }
+        try {
+            // Larger and sharper than receipt thumbnails so small text stays readable.
+            const url = await compressImage(file, 2000, 0.85);
+            aiImages.push({ mediaType: "image/jpeg", data: url.split(",")[1], url });
+        } catch (_) {
+            aiError(t("badImage"));
+        }
+    }
+    renderAiThumbs();
+}
+
+function openAi() {
+    aiData = null;
+    aiError("");
+    aiStep("input");
+    renderAiThumbs();
+    $("aiDialog").showModal();
+    $("aiText").focus();
+}
+
+function setAiLoading(on) {
+    $("aiLoading").classList.toggle("hidden", !on);
+    $("aiReadBtn").disabled = on;
+    $("aiText").disabled = on;
+}
+
+async function callParse(text) {
+    const headers = { "Content-Type": "application/json" };
+    const code = aiCode();
+    if (code) headers["x-access-code"] = code;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 90000);
+    try {
+        return await fetch("/api/parse", {
+            method: "POST",
+            headers,
+            signal: controller.signal,
+            body: JSON.stringify({
+                text,
+                images: aiImages.map(({ mediaType, data }) => ({ mediaType, data })),
+                lang: window.I18n.getLang(),
+            }),
+        });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+async function runAi() {
+    const text = $("aiText").value.trim();
+    if (!text && !aiImages.length) { aiError(t("aiNeedInput")); return; }
+    aiError("");
+    setAiLoading(true);
+    try {
+        let res = await callParse(text);
+        if (res.status === 401) {
+            const code = prompt(t("aiAccessPrompt"), "")?.trim();
+            if (code) {
+                setAiCode(code);
+                res = await callParse(text);
+            }
+        }
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            if (res.status === 401) setAiCode("");
+            const key = `aiErr_${body.error}`;
+            aiError(window.I18n.STRINGS.en[key] ? t(key) : t("aiErr_failed"));
+            return;
+        }
+        if (!Array.isArray(body.expenses) || !body.expenses.length) {
+            aiError(t("aiErrNothing"));
+            return;
+        }
+        aiData = body;
+        renderAiPreview();
+        aiStep("preview");
+    } catch (_) {
+        aiError(t("aiErrNetwork"));
+    } finally {
+        setAiLoading(false);
+    }
+}
+
+// Turn the AI's answer into app data, merged into `base` (people matched by name).
+function mergeAiResult(data, base) {
+    const trip = clone(base);
+    const ids = new Map(trip.people.map(p => [p.name.trim().toLowerCase(), p.id]));
+    const idFor = name => {
+        const clean = String(name ?? "").trim();
+        const key = clean.toLowerCase();
+        if (!key) return null;
+        if (!ids.has(key)) {
+            const p = { id: uid(), name: clean, color: nextColor(trip.people) };
+            trip.people.push(p);
+            ids.set(key, p.id);
+        }
+        return ids.get(key);
+    };
+    const unique = list => [...new Set(list.filter(Boolean))];
+    const amount = n => (Number.isFinite(Number(n)) && Number(n) > 0 ? Number(n).toFixed(2) : "");
+
+    const everyone = unique((data.people || []).map(idFor));
+    for (const e of data.expenses || []) {
+        const payer = idFor(e.payer) || everyone[0];
+        if (!payer) continue;
+        const exp = {
+            id: uid(), name: String(e.name || "").trim() || t("defaultItem"), payer,
+            mode: e.split === "itemized" ? "itemized" : "equal",
+            amount: "", paidOverride: "", participants: [], items: [], receipt: null,
+        };
+        if (exp.mode === "equal") {
+            const who = unique((e.participants || []).map(idFor));
+            exp.participants = who.length ? who : everyone;
+            exp.amount = amount(e.total);
+            if (!toCents(exp.amount)) continue;
+        } else {
+            const items = (e.items || []).map(it => ({
+                name: String(it.name || "").trim(),
+                price: amount(it.price),
+                people: unique((it.people || []).map(idFor)),
+            })).filter(it => toCents(it.price));
+            if (!items.length) continue;
+            const group = unique(items.flatMap(it => it.people));
+            exp.items = items.map(it => ({ id: uid(), ...it, people: it.people.length ? it.people : (group.length ? group : everyone) }));
+            const itemsTotal = exp.items.reduce((a, it) => a + toCents(it.price), 0);
+            if (toCents(e.total) && toCents(e.total) !== itemsTotal) exp.paidOverride = amount(e.total);
+        }
+        trip.expenses.push(exp);
+    }
+    if (!trip.title && data.title) trip.title = String(data.title).trim();
+    return trip;
+}
+
+function aiFreshBase() {
+    const cur = String(aiData?.currency || "").trim().slice(0, 4);
+    return { ...emptyState(), currency: cur || state.currency };
+}
+
+function renderAiPreview() {
+    const trip = mergeAiResult(aiData, aiFreshBase());
+    const r = compute(trip);
+    const fmt = c => `${c < 0 ? "-" : ""}${esc(trip.currency)}${(Math.abs(c) / 100).toFixed(2)}`;
+    const tp = id => {
+        const p = trip.people.find(x => x.id === id);
+        return p ? `<span class="pill" style="--pc:${p.color}">${esc(p.name)}</span>` : "";
+    };
+
+    $("aiFound").textContent = t("aiFound", { people: trip.people.length, expenses: trip.expenses.length });
+
+    const notes = (aiData.notes || []).filter(n => String(n).trim());
+    const notesHtml = notes.length
+        ? `<div class="ai-notes"><b>${t("aiNotes")}</b><ul>${notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul></div>`
+        : "";
+
+    const expensesHtml = trip.expenses.map(exp => {
+        const b = r.perExpense.get(exp.id);
+        const sharers = trip.people.filter(p => b.shares.get(p.id) > 0);
+        const splitText = exp.mode === "itemized" ? t("splitItems")
+            : (sharers.length === trip.people.length ? t("splitEveryone") : t("splitN", { n: sharers.length }));
+        const warn = exp.mode === "itemized" && b.itemsTotal !== b.total
+            ? `<p class="warn">${t("warnDiff", { items: fmt(b.itemsTotal), diff: fmt(Math.abs(b.total - b.itemsTotal)) })}</p>` : "";
+        return `
+        <div class="ai-expense">
+            <div class="expense-head">
+                <div>
+                    <b>${esc(exp.name)}</b>
+                    <div class="expense-meta">${t("paidBy")} ${tp(exp.payer)} · ${splitText}</div>
+                </div>
+                <span class="expense-amount">${fmt(b.total)}</span>
+            </div>
+            <div class="share-chips">${sharers.map(p => `<span class="share-chip">${tp(p.id)} ${fmt(b.shares.get(p.id))}</span>`).join("")}</div>
+            ${warn}
+        </div>`;
+    }).join("");
+
+    const sharesHtml = `
+        <div class="ai-shares">
+            <h3>${t("aiShares")}</h3>
+            <table>
+                <thead><tr><th>${t("thName")}</th><th class="num">${t("thActual")}</th><th class="num">${t("thUpfront")}</th></tr></thead>
+                <tbody>${trip.people.map((p, i) => `<tr><td>${tp(p.id)}</td><td class="num">${fmt(r.spent[i])}</td><td class="num">${fmt(r.paid[i])}</td></tr>`).join("")}</tbody>
+                <tfoot><tr><td>${t("total")}</td><td class="num">${fmt(r.grandTotal)}</td><td></td></tr></tfoot>
+            </table>
+        </div>`;
+
+    $("aiPreview").innerHTML = notesHtml + expensesHtml + sharesHtml;
+}
+
+function finishAi(newState) {
+    state = newState;
+    if (!commit()) return;
+    aiData = null;
+    aiImages = [];
+    $("aiText").value = "";
+    $("aiDialog").close();
+    showTab("shared");
+}
+
+$("aiBtn").addEventListener("click", openAi);
+$("aiCancelBtn").addEventListener("click", () => $("aiDialog").close());
+$("aiReadBtn").addEventListener("click", runAi);
+$("aiBackBtn").addEventListener("click", () => aiStep("input"));
+$("aiAddBtn").addEventListener("click", () => finishAi(mergeAiResult(aiData, state)));
+$("aiReplaceBtn").addEventListener("click", () => {
+    if ((state.people.length || state.expenses.length) && !confirm(t("aiReplaceConfirm"))) return;
+    finishAi(mergeAiResult(aiData, aiFreshBase()));
+});
+
+$("aiFiles").addEventListener("change", e => {
+    addAiFiles([...e.target.files]);
+    e.target.value = "";
+});
+$("aiThumbs").addEventListener("click", e => {
+    const i = e.target.closest("[data-remove-ai-image]")?.dataset.removeAiImage;
+    if (i === undefined) return;
+    aiImages.splice(Number(i), 1);
+    renderAiThumbs();
+});
+
+const drop = $("aiDrop");
+drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", e => {
+    e.preventDefault();
+    drop.classList.remove("over");
+    addAiFiles([...e.dataTransfer.files]);
+});
+
+// Paste screenshots straight into the dialog (text pastes into the box as normal).
+$("aiDialog").addEventListener("paste", e => {
+    const files = [...(e.clipboardData?.items || [])]
+        .filter(it => it.kind === "file" && it.type.startsWith("image/"))
+        .map(it => it.getAsFile())
+        .filter(Boolean);
+    if (files.length) {
+        e.preventDefault();
+        addAiFiles(files);
+    }
 });
 
 // ================= Init =================

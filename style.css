@@ -316,6 +316,44 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .image-dialog { width: auto; max-width: calc(100vw - 32px); padding: 12px; text-align: center; }
 .image-dialog img { max-width: 100%; max-height: calc(100vh - 140px); display: block; margin: 0 auto 12px; border-radius: 8px; }
 
+/* ---------- AI import ---------- */
+.head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.ai-body { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.ai-step { display: flex; flex-direction: column; gap: 12px; }
+textarea {
+    font: inherit; color: inherit; background: var(--soft);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px; width: 100%; resize: vertical; min-height: 120px;
+}
+textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.drop-zone {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    border: 2px dashed var(--border); border-radius: 10px; padding: 14px;
+    color: var(--muted); font-size: 0.9rem;
+}
+.drop-zone.over { border-color: var(--accent); background: var(--soft); }
+.ai-thumbs { display: flex; gap: 8px; flex-wrap: wrap; }
+.ai-thumbs:empty { display: none; }
+.ai-thumb { position: relative; }
+.ai-thumb img { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); display: block; }
+.ai-thumb button {
+    position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%;
+    border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer; line-height: 1;
+}
+.spinner {
+    display: inline-block; width: 14px; height: 14px; vertical-align: -2px;
+    border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.ai-notes { background: var(--neg-bg); color: var(--text); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 0.9rem; }
+.ai-notes b { color: var(--neg); }
+.ai-notes ul { margin: 6px 0 0; padding-left: 18px; }
+.ai-expense { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+.ai-expense .expense-head { align-items: center; }
+.ai-expense .share-chips { margin-top: 8px; }
+.ai-shares { margin-top: 12px; }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 700px) {
     .settle-grid { grid-template-columns: 1fr; }
