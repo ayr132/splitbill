@@ -154,6 +154,7 @@ function renderPeople() {
             </li>`).join("")
         : `<li class="muted">${t("noFriendsYet")}</li>`;
     $("peopleCount").textContent = state.people.length ? t("peopleCount", { n: state.people.length }) : "";
+    $("welcome").classList.toggle("hidden", state.people.length > 0);
 }
 
 // ---------- 1. Shared expenses ----------
@@ -350,6 +351,13 @@ function settleUpText() {
 }
 
 // ================= Friends events =================
+$("getStartedBtn").addEventListener("click", () => {
+    const input = $("personName");
+    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+    input.scrollIntoView({ behavior, block: "center" });
+    input.focus({ preventScroll: true });
+});
+
 $("addPersonForm").addEventListener("submit", e => {
     e.preventDefault();
     const name = $("personName").value.trim();
