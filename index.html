@@ -3,29 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Split Bill</title>
+    <title>splitbill</title>
+    <link rel="icon" type="image/png" href="assets/favicon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <header class="topbar">
-        <div class="wrap">
-            <div class="title-row">
-                <input id="tripTitle" class="trip-title" data-i18n-ph="tripPlaceholder" data-i18n-aria="tripAria" autocomplete="off">
-                <div class="toolbar">
-                    <div class="seg lang-switch" role="group" data-i18n-aria="language">
-                        <button type="button" data-lang="ms" lang="ms">BM</button>
-                        <button type="button" data-lang="en" lang="en">EN</button>
-                    </div>
-                    <label class="currency">
-                        <span data-i18n="currency"></span>
-                        <input type="text" id="currency" maxlength="4" data-i18n-aria="currencyAria">
-                    </label>
-                    <button type="button" class="btn ghost small" id="exampleBtn" data-i18n="loadExample"></button>
-                    <button type="button" class="btn ghost small" id="exportBtn" data-i18n="export"></button>
-                    <label class="btn ghost small file-btn"><span data-i18n="import"></span><input type="file" id="importInput" accept="application/json,.json" hidden></label>
-                    <button type="button" class="btn ghost small danger-text" id="resetBtn" data-i18n="clearAll"></button>
+        <div class="wrap bar-row">
+            <span class="bar-side"></span>
+            <h1 class="brand"><img src="assets/logo-white.png" alt="splitbill" width="637" height="105"></h1>
+            <div class="bar-side end">
+                <div class="lang-switch" role="group" data-i18n-aria="language">
+                    <button type="button" data-lang="en" lang="en">EN</button>
+                    <button type="button" data-lang="ms" lang="ms">BM</button>
                 </div>
             </div>
+        </div>
+        <div class="wrap">
             <nav class="tabs" role="tablist">
                 <button type="button" class="tab" role="tab" data-tab="shared" data-i18n="tabShared"></button>
                 <button type="button" class="tab" role="tab" data-tab="individual" data-i18n="tabIndividual"></button>
@@ -36,16 +33,30 @@
     </header>
 
     <main class="wrap">
+        <!-- Trip name and tools -->
+        <section class="card trip-card">
+            <input id="tripTitle" class="trip-title" data-i18n-ph="tripPlaceholder" data-i18n-aria="tripAria" autocomplete="off">
+            <div class="toolbar">
+                    <label class="currency">
+                        <span data-i18n="currency"></span>
+                        <input type="text" id="currency" maxlength="4" data-i18n-aria="currencyAria">
+                    </label>
+                    <button type="button" class="btn ghost small" id="exampleBtn" data-i18n="loadExample"></button>
+                    <button type="button" class="btn ghost small" id="exportBtn" data-i18n="export"></button>
+                    <label class="btn ghost small file-btn"><span data-i18n="import"></span><input type="file" id="importInput" accept="application/json,.json" hidden></label>
+                    <button type="button" class="btn ghost small danger-text" id="resetBtn" data-i18n="clearAll"></button>
+            </div>
+        </section>
+
         <!-- Friends (always visible) -->
         <section class="card people-card">
-            <div class="people-row">
-                <h2 data-i18n="friends"></h2>
-                <ul id="peopleList" class="pills"></ul>
-                <form id="addPersonForm" class="add-person">
-                    <input type="text" id="personName" autocomplete="off" data-i18n-ph="addFriendPh" data-i18n-aria="addFriendAria">
-                    <button type="submit" class="btn small" data-i18n="add"></button>
-                </form>
-            </div>
+            <h2 class="card-title" data-i18n="friends"></h2>
+            <form id="addPersonForm" class="add-person">
+                <input type="text" id="personName" autocomplete="off" data-i18n-ph="addFriendPh" data-i18n-aria="addFriendAria">
+                <button type="submit" class="btn soft"><span class="ico ico-user-plus" aria-hidden="true"></span><span data-i18n="add"></span></button>
+            </form>
+            <ul id="peopleList" class="pills"></ul>
+            <p class="muted people-count" id="peopleCount"></p>
         </section>
 
         <!-- 1. Shared expenses record -->
@@ -57,7 +68,7 @@
                 </div>
                 <div class="head-actions">
                     <button type="button" class="btn ghost" id="aiBtn" data-i18n="aiButton"></button>
-                    <button type="button" class="btn" id="addExpenseBtn" data-i18n="addExpense"></button>
+                    <button type="button" class="btn" id="addExpenseBtn"><span class="ico ico-bag" aria-hidden="true"></span><span data-i18n="addExpense"></span></button>
                 </div>
             </div>
             <div id="expenseList" class="expense-list"></div>

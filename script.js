@@ -147,11 +147,13 @@ function commit() {
 function renderPeople() {
     $("peopleList").innerHTML = state.people.length
         ? state.people.map(p => `
-            <li class="pill person-pill" style="--pc:${p.color}">
+            <li class="person-pill" style="--pc:${p.color}">
+                <span class="avatar" aria-hidden="true"><span class="ico ico-user"></span></span>
                 <button type="button" class="name-btn" data-rename="${p.id}" title="${esc(t("rename"))}">${esc(p.name)}</button>
-                <button type="button" data-remove-person="${p.id}" aria-label="${esc(t("removeName", { name: p.name }))}">&times;</button>
+                <button type="button" class="remove-btn" data-remove-person="${p.id}" aria-label="${esc(t("removeName", { name: p.name }))}" title="${esc(t("removeName", { name: p.name }))}"><span class="ico ico-user-minus" aria-hidden="true"></span></button>
             </li>`).join("")
         : `<li class="muted">${t("noFriendsYet")}</li>`;
+    $("peopleCount").textContent = state.people.length ? t("peopleCount", { n: state.people.length }) : "";
 }
 
 // ---------- 1. Shared expenses ----------
@@ -205,8 +207,8 @@ function renderShared() {
                     <div class="expense-meta">${t("paidBy")} ${pill(exp.payer)} · ${splitText}</div>
                 </div>
                 <div class="expense-right">
-                    <span class="expense-amount">${money(b.total)}</span>
-                    <button type="button" class="btn ghost small" data-edit="${exp.id}">${t("edit")}</button>
+                    <span class="expense-amount"><span class="ico ico-money" aria-hidden="true"></span>${money(b.total)}</span>
+                    <button type="button" class="btn soft small" data-edit="${exp.id}">✎ ${t("edit")}</button>
                 </div>
             </div>
             <div class="expense-body">
