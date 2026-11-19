@@ -1,11 +1,13 @@
 // Vercel serverless function: POST /api/parse
-// Reads shared-spending notes (text and/or images) with Claude and returns
+// Reads shared-spending notes (text and/or images) with Google Gemini and returns
 // structured expenses for the Split Bill app.
 //
-// Environment variable (set in Vercel → Project → Settings → Environment Variables):
-//   ANTHROPIC_API_KEY  required
-import Anthropic from "@anthropic-ai/sdk";
+// Environment variables (set in Vercel → Project → Settings → Environment Variables):
+//   GEMINI_API_KEY  required, from Google AI Studio → API Keys
+//   GEMINI_MODEL    optional, defaults to gemini-3.8-flash
+import { GoogleGenAI, ApiError } from "@google/genai";
 
+const MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
 const MAX_IMAGES = 4;
 const MAX_TEXT = 20000;
 const MAX_IMAGE_BYTES = 100 * 1024; // 100 KB per image
@@ -66,13 +68,21 @@ How to fill the fields:
 
 Only use amounts that appear in the input. When something is unclear, give your best reading and mention it in notes.`;
 
+// Gemini errors carry the API's JSON body as the message; pull out the readable sentence.
+function apiMessage(error) {
+    try {
+        return JSON.parse(error.message).error.message || error.message;
+    } catch (_) {
+        return String(error.message);
+    }
+}
+
 export default async function handler(req, res) {
     if (req.method !== "POST") {
         res.setHeader("Allow", "POST");
         return res.status(405).json({ error: "bad_input" });
     }
-
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!process.env.GEMINI_API_KEY) {
         return res.status(500).json({ error: "not_configured" });
     }
 
@@ -91,62 +101,53 @@ export default async function handler(req, res) {
         return res.status(413).json({ error: "image_too_large" });
     }
 
-    const content = [
-        ...images.map(img => ({
-            type: "image",
-            source: { type: "base64", media_type: img.mediaType, data: img.data },
-        })),
+    const parts = [
+        ...images.map(img => ({ inlineData: { mimeType: img.mediaType, data: img.data } })),
         {
-            type: "text",
             text: `${text ? `Notes:\n${text}\n\n` : ""}Extract the shared expenses${images.length ? " from the image(s) above" : ""}. Write the notes in ${notesLang}.`,
         },
     ];
 
-    // ---- Call Claude ----
+    // ---- Call Gemini ----
     try {
-        const client = new Anthropic();
-        const response = await client.beta.messages.create({
-            model: "claude-opus-5-5",
-            max_tokens: 16000,
-            betas: ["server-side-fallback-2026-07-01"],
-            fallbacks: "default",
-            system: SYSTEM,
-            output_config: {
-                effort: "medium",
-                format: { type: "json_schema", schema: SCHEMA },
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const response = await ai.models.generateContent({
+            model: MODEL,
+            contents: [{ role: "user", parts }],
+            config: {
+                systemInstruction: SYSTEM,
+                responseMimeType: "application/json",
+                responseJsonSchema: SCHEMA,
             },
-            messages: [{ role: "user", content }],
         });
 
-        if (response.stop_reason === "refusal") {
+        const finish = response.candidates?.[0]?.finishReason;
+        if (response.promptFeedback?.blockReason || finish === "SAFETY") {
             return res.status(422).json({ error: "refused" });
         }
-        if (response.stop_reason === "max_tokens") {
+        if (finish === "MAX_TOKENS") {
             return res.status(422).json({ error: "bad_input" });
         }
-        const block = response.content.find(b => b.type === "text");
-        if (!block) return res.status(502).json({ error: "failed" });
+        if (!response.text) return res.status(502).json({ error: "failed" });
 
-        const data = JSON.parse(block.text);
+        const data = JSON.parse(response.text);
         if (!Array.isArray(data.people) || !Array.isArray(data.expenses)) {
             return res.status(502).json({ error: "failed" });
         }
         return res.status(200).json(data);
     } catch (error) {
-        if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError) {
-            console.error("Anthropic auth error:", error.message);
-            return res.status(500).json({ error: "not_configured" });
-        }
-        if (error instanceof Anthropic.RateLimitError) {
-            return res.status(429).json({ error: "rate_limited" });
-        }
-        if (error instanceof Anthropic.BadRequestError) {
-            // Pass the API's reason back so problems are visible without digging through logs.
-            console.error("Anthropic bad request:", error.message);
-            return res.status(400).json({ error: "ai_bad_request", detail: String(error.message).slice(0, 300) });
-        }
-        if (error instanceof Anthropic.APIError) {
-            console.error(`Anthropic API error ${error.status}:`, error.message);
+        if (error instanceof ApiError) {
+            console.error(`Gemini API error ${error.status}:`, error.message);
+            if (error.status === 401 || error.status === 403 || /API_KEY_INVALID/.test(error.message)) {
+                return res.status(500).json({ error: "not_configured" });
+            }
+            if (error.status === 429) {
+                return res.status(429).json({ error: "rate_limited" });
+            }
+            if (error.status === 400 || error.status === 404) {
+                // Pass the API's reason back so problems are visible without digging through logs.
+                return res.status(400).json({ error: "ai_bad_request", detail: apiMessage(error).slice(0, 300) });
+            }
             return res.status(502).json({ error: "failed" });
         }
         console.error("parse failed:", error);
