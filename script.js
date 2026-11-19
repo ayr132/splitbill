@@ -91,7 +91,22 @@ document.querySelectorAll("[data-lang]").forEach(b => b.addEventListener("click"
         renderDraft();
     }
     if (aiData && $("aiDialog").open) renderAiPreview();
+    // Re-translate any error message that's currently on screen.
+    setDialogError(dialogErrorState.key, dialogErrorState.vars);
+    aiError(aiErrorState.key, aiErrorState.vars);
 }));
+
+// Error messages remember their translation key so they can follow a language switch.
+let dialogErrorState = { key: "", vars: {} };
+let aiErrorState = { key: "", vars: {} };
+function setDialogError(key, vars = {}) {
+    dialogErrorState = { key, vars };
+    $("dialogError").textContent = key ? t(key, vars) : "";
+}
+function aiError(key, vars = {}) {
+    aiErrorState = { key, vars };
+    $("aiError").textContent = key ? t(key, vars) : "";
+}
 
 // ================= Tabs =================
 function currentTab() {
@@ -394,7 +409,7 @@ function openExpense(id) {
         : { id: null, name: "", payer: all[0], mode: "equal", amount: "", paidOverride: "", participants: all, items: [], receipt: null };
     $("dialogTitle").textContent = t(id ? "editExpenseTitle" : "addExpenseTitle");
     $("deleteExpenseBtn").classList.toggle("hidden", !id);
-    $("dialogError").textContent = "";
+    setDialogError("");
     renderDraft();
     $("expenseDialog").showModal();
     if (!id) $("dialogBody").querySelector("[data-f='name']").focus();
@@ -541,7 +556,7 @@ dialogBody.addEventListener("change", async e => {
         draft.receipt = await compressImage(file);
         renderDraft();
     } catch (_) {
-        $("dialogError").textContent = t("badImage");
+        setDialogError("badImage");
     }
 });
 
@@ -577,7 +592,7 @@ $("expenseForm").addEventListener("submit", e => {
         : d.mode === "itemized" && !b.total ? "errItems"
         : "";
     if (err) {
-        $("dialogError").textContent = t(err);
+        setDialogError(err);
         if (d.mode === "itemized" && !d.items.length) {
             d.items.push({ id: uid(), name: "", price: "", people: state.people.map(p => p.id) });
             renderDraft();
@@ -596,7 +611,7 @@ $("expenseForm").addEventListener("submit", e => {
     if (!saveState()) {
         state.expenses = backup;
         if (isNew) d.id = null;
-        $("dialogError").textContent = t("errStorageFull");
+        setDialogError("errStorageFull");
         return;
     }
     $("expenseDialog").close();
@@ -683,7 +698,6 @@ function aiStep(step) {
     $("aiPreviewStep").classList.toggle("hidden", step !== "preview");
 }
 
-function aiError(msg) { $("aiError").textContent = msg || ""; }
 
 function renderAiThumbs() {
     $("aiThumbs").innerHTML = aiImages.map((img, i) => `
@@ -697,13 +711,13 @@ async function addAiFiles(files) {
     aiError("");
     for (const file of files) {
         if (!file.type.startsWith("image/")) continue;
-        if (aiImages.length >= AI_MAX_IMAGES) { aiError(t("aiTooMany", { n: AI_MAX_IMAGES })); break; }
+        if (aiImages.length >= AI_MAX_IMAGES) { aiError("aiTooMany", { n: AI_MAX_IMAGES }); break; }
         try {
             const url = await compressToLimit(file, AI_MAX_IMAGE_BYTES);
-            if (!url) { aiError(t("aiErr_image_too_large")); continue; }
+            if (!url) { aiError("aiErr_image_too_large"); continue; }
             aiImages.push({ mediaType: "image/jpeg", data: url.split(",")[1], url });
         } catch (_) {
-            aiError(t("badImage"));
+            aiError("badImage");
         }
     }
     renderAiThumbs();
@@ -776,7 +790,7 @@ async function callParse(text) {
 
 async function runAi() {
     const text = $("aiText").value.trim();
-    if (!text && !aiImages.length) { aiError(t("aiNeedInput")); return; }
+    if (!text && !aiImages.length) { aiError("aiNeedInput"); return; }
     aiError("");
     setAiLoading(true);
     try {
@@ -784,21 +798,21 @@ async function runAi() {
         // Vercel's own errors (timeouts, crashes) come back as HTML, not JSON.
         const body = await res.json().catch(() => ({ error: "failed", detail: `HTTP ${res.status}` }));
         if (!res.ok) {
-            if (res.status === 504) { aiError(t("aiErr_timeout")); return; }
+            if (res.status === 504) { aiError("aiErr_timeout"); return; }
             const key = window.I18n.STRINGS.en[`aiErr_${body.error}`] ? `aiErr_${body.error}` : "aiErr_failed";
             const detail = body.detail || "";
-            aiError(t(key, { detail, why: detail ? ` (${detail})` : "" }));
+            aiError(key, { detail, why: detail ? ` (${detail})` : "" });
             return;
         }
         if (!Array.isArray(body.expenses) || !body.expenses.length) {
-            aiError(t("aiErrNothing"));
+            aiError("aiErrNothing");
             return;
         }
         aiData = body;
         renderAiPreview();
         aiStep("preview");
     } catch (_) {
-        aiError(t("aiErrNetwork"));
+        aiError("aiErrNetwork");
     } finally {
         setAiLoading(false);
     }
