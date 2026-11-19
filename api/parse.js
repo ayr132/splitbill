@@ -128,11 +128,20 @@ export default async function handler(req, res) {
         if (finish === "MAX_TOKENS") {
             return res.status(422).json({ error: "bad_input" });
         }
-        if (!response.text) return res.status(502).json({ error: "failed" });
+        if (!response.text) {
+            console.error("Gemini returned no text. finishReason:", finish);
+            return res.status(502).json({ error: "failed", detail: `empty answer from ${MODEL} (${finish || "no finish reason"})` });
+        }
 
-        const data = JSON.parse(response.text);
+        let data;
+        try {
+            data = JSON.parse(response.text);
+        } catch (_) {
+            console.error("Gemini returned invalid JSON:", response.text.slice(0, 500));
+            return res.status(502).json({ error: "failed", detail: `${MODEL} returned unreadable data` });
+        }
         if (!Array.isArray(data.people) || !Array.isArray(data.expenses)) {
-            return res.status(502).json({ error: "failed" });
+            return res.status(502).json({ error: "failed", detail: `${MODEL} returned data in the wrong shape` });
         }
         return res.status(200).json(data);
     } catch (error) {
@@ -148,9 +157,9 @@ export default async function handler(req, res) {
                 // Pass the API's reason back so problems are visible without digging through logs.
                 return res.status(400).json({ error: "ai_bad_request", detail: apiMessage(error).slice(0, 300) });
             }
-            return res.status(502).json({ error: "failed" });
+            return res.status(502).json({ error: "failed", detail: `Gemini ${error.status}: ${apiMessage(error).slice(0, 200)}` });
         }
         console.error("parse failed:", error);
-        return res.status(500).json({ error: "failed" });
+        return res.status(500).json({ error: "failed", detail: String(error?.message || error).slice(0, 200) });
     }
 }

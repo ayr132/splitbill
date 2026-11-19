@@ -781,10 +781,13 @@ async function runAi() {
     setAiLoading(true);
     try {
         const res = await callParse(text);
-        const body = await res.json().catch(() => ({}));
+        // Vercel's own errors (timeouts, crashes) come back as HTML, not JSON.
+        const body = await res.json().catch(() => ({ error: "failed", detail: `HTTP ${res.status}` }));
         if (!res.ok) {
-            const key = `aiErr_${body.error}`;
-            aiError(window.I18n.STRINGS.en[key] ? t(key, { detail: body.detail || "" }) : t("aiErr_failed"));
+            if (res.status === 504) { aiError(t("aiErr_timeout")); return; }
+            const key = window.I18n.STRINGS.en[`aiErr_${body.error}`] ? `aiErr_${body.error}` : "aiErr_failed";
+            const detail = body.detail || "";
+            aiError(t(key, { detail, why: detail ? ` (${detail})` : "" }));
             return;
         }
         if (!Array.isArray(body.expenses) || !body.expenses.length) {

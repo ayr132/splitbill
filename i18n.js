@@ -184,7 +184,8 @@
             aiErr_refused: "The AI declined to read this content.",
             aiErr_rate_limited: "Too many requests right now. Try again in a minute.",
             aiErr_not_configured: "AI isn't set up on this site yet (the API key is missing).",
-            aiErr_failed: "Something went wrong. Please try again.",
+            aiErr_failed: "Something went wrong{why}. Please try again.",
+            aiErr_timeout: "The AI took too long to answer. Try again, or use a smaller or clearer image.",
 
             // Toolbar
             storageFull: "Couldn't save to this browser's storage. It may be full. Try removing some receipt photos.",
@@ -369,7 +370,8 @@
             aiErr_refused: "AI menolak untuk baca kandungan ni.",
             aiErr_rate_limited: "Terlalu banyak permintaan sekarang. Cuba lagi sekejap lagi.",
             aiErr_not_configured: "AI belum disediakan di laman ni (tiada API key).",
-            aiErr_failed: "Ada masalah. Cuba lagi.",
+            aiErr_failed: "Ada masalah{why}. Cuba lagi.",
+            aiErr_timeout: "AI ambil masa terlalu lama untuk jawab. Cuba lagi, atau guna gambar yang lebih kecil atau jelas.",
 
             storageFull: "Tak dapat simpan dalam storan browser. Mungkin dah penuh. Cuba buang beberapa gambar resit.",
             replaceExample: "Ganti trip sekarang dengan contoh?",
