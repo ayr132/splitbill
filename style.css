@@ -798,3 +798,22 @@ button:not(.glass-btn):not(.name-btn):not(.remove-btn):active:not(:disabled), .f
     .spend-body { grid-template-columns: 1fr; }
     .pie-wrap { max-width: 240px; margin: 0 auto; width: 100%; }
 }
+
+/* ---------- Read with AI shortcut card ---------- */
+.ai-card {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background:
+        linear-gradient(var(--card), var(--card)) padding-box,
+        linear-gradient(120deg, var(--accent), #d8a7c0, #9fc5e8, var(--accent)) border-box;
+    border: 2px solid transparent;
+}
+.ai-card-text { flex: 1; min-width: 0; }
+.ai-card h2 { font-size: 1.15rem; }
+.ai-card .muted { font-size: 0.92rem; margin-top: 4px; }
+.ai-card-btn { flex-shrink: 0; padding: 12px 22px; font-size: 1rem; }
+@media (max-width: 560px) {
+    .ai-card { flex-direction: column; text-align: center; gap: 14px; }
+    .ai-card-btn { width: 100%; }
+}

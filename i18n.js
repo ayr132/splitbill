@@ -188,6 +188,8 @@
 
             // AI import
             aiButton: "✨ Read with AI",
+            aiCardTitle: "Let AI sort it out",
+            aiCardDesc: "Just click the button and paste your notes, a chat message or receipt photos. The AI adds everyone, works out who paid what and who shares each bill, and calculates everything for you.",
             aiTitle: "Read expenses with AI",
             aiDesc: "Paste your notes or a chat message, or add screenshots or receipt photos. The AI works out who paid what and who shares it.",
             aiTextPh: "e.g. Ali paid the Grab rm15 (equally). Chong paid dinner rm100: Ali nasi lemak rm20…",
@@ -403,6 +405,8 @@
             thisExpense: "perbelanjaan ni",
 
             aiButton: "✨ Baca dengan AI",
+            aiCardTitle: "Biar AI uruskan",
+            aiCardDesc: "Tekan je butang ni dan tampal nota, mesej chat atau gambar resit. AI akan masukkan semua orang, kira siapa bayar apa dan siapa kongsi setiap bil, dan uruskan semua pengiraan untuk anda.",
             aiTitle: "Baca perbelanjaan dengan AI",
             aiDesc: "Tampal nota atau mesej chat, atau tambah screenshot atau gambar resit. AI akan kira siapa bayar apa dan siapa yang kongsi.",
             aiTextPh: "cth. Ali bayar Grab rm15 (sama rata). Chong bayar makan rm100: Ali nasi lemak rm20…",
