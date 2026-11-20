@@ -1,58 +1,35 @@
 // Vercel serverless function: POST /api/parse
-// Reads shared-spending notes (text and/or images) with Google Gemini and returns
+// Reads shared-spending notes (text and/or images) with DeepSeek and returns
 // structured expenses for the Split Bill app.
 //
 // Environment variables (set in Vercel → Project → Settings → Environment Variables):
-//   GEMINI_API_KEY  required, from Google AI Studio → API Keys
-//   GEMINI_MODEL    optional, defaults to gemini-3.8-flash
-import { GoogleGenAI, ApiError } from "@google/genai";
+//   DEEPSEEK_API_KEY  required, from platform.deepseek.com → API Keys
+//   DEEPSEEK_MODEL    optional, defaults to deepseek-flash (needs image input)
 
-const MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+const API_URL = "https://api.deepseek.com/chat/completions";
+const MODEL = process.env.DEEPSEEK_MODEL || "deepseek-flash";
 const MAX_IMAGES = 4;
 const MAX_TEXT = 20000;
 const MAX_IMAGE_BYTES = 100 * 1024; // 100 KB per image
 const MAX_IMAGE_B64 = Math.ceil(MAX_IMAGE_BYTES / 3) * 4; // same limit in base64 characters
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 
-const SCHEMA = {
-    type: "object",
-    additionalProperties: false,
-    required: ["title", "currency", "people", "expenses", "notes"],
-    properties: {
-        title: { type: "string" },
-        currency: { type: "string" },
-        people: { type: "array", items: { type: "string" } },
-        expenses: {
-            type: "array",
-            items: {
-                type: "object",
-                additionalProperties: false,
-                required: ["name", "payer", "split", "total", "participants", "items"],
-                properties: {
-                    name: { type: "string" },
-                    payer: { type: "string" },
-                    split: { type: "string", enum: ["equal", "itemized"] },
-                    total: { type: "number" },
-                    participants: { type: "array", items: { type: "string" } },
-                    items: {
-                        type: "array",
-                        items: {
-                            type: "object",
-                            additionalProperties: false,
-                            required: ["name", "price", "people"],
-                            properties: {
-                                name: { type: "string" },
-                                price: { type: "number" },
-                                people: { type: "array", items: { type: "string" } },
-                            },
-                        },
-                    },
-                },
-            },
-        },
-        notes: { type: "array", items: { type: "string" } },
-    },
-};
+// DeepSeek's JSON mode guarantees valid JSON but not a schema, so the shape is spelled out in the prompt.
+const SHAPE = `Reply with only a JSON object of this shape:
+{
+  "title": string,
+  "currency": string,
+  "people": [string],
+  "expenses": [{
+    "name": string,
+    "payer": string,
+    "split": "equal" | "itemized",
+    "total": number,
+    "participants": [string],
+    "items": [{ "name": string, "price": number, "people": [string] }]
+  }],
+  "notes": [string]
+}`;
 
 const SYSTEM = `You turn a group's shared-spending notes into data for a bill-splitting app. The input can be a screenshot of notes, a receipt photo, a chat message or plain text, in English, Malay or a mix of both (for example "kongsi" means shared, "sorang" means each person, "bayar" means paid, "semua" means everyone).
 
@@ -66,15 +43,12 @@ How to fill the fields:
 - Amounts are plain numbers ("rm12" becomes 12).
 - notes: short points the user should check, such as items that don't add up to the written total, an unclear payer or an unreadable amount. Use [] when everything is clear.
 
-Only use amounts that appear in the input. When something is unclear, give your best reading and mention it in notes.`;
+Only use amounts that appear in the input. When something is unclear, give your best reading and mention it in notes.
 
-// Gemini errors carry the API's JSON body as the message; pull out the readable sentence.
-function apiMessage(error) {
-    try {
-        return JSON.parse(error.message).error.message || error.message;
-    } catch (_) {
-        return String(error.message);
-    }
+${SHAPE}`;
+
+function apiMessage(body, status) {
+    return String(body?.error?.message || body?.message || `HTTP ${status}`);
 }
 
 export default async function handler(req, res) {
@@ -82,7 +56,7 @@ export default async function handler(req, res) {
         res.setHeader("Allow", "POST");
         return res.status(405).json({ error: "bad_input" });
     }
-    if (!process.env.GEMINI_API_KEY) {
+    if (!process.env.DEEPSEEK_API_KEY) {
         return res.status(500).json({ error: "not_configured" });
     }
 
@@ -101,43 +75,72 @@ export default async function handler(req, res) {
         return res.status(413).json({ error: "image_too_large" });
     }
 
-    const parts = [
-        ...images.map(img => ({ inlineData: { mimeType: img.mediaType, data: img.data } })),
+    const content = [
+        ...images.map(img => ({ type: "image_url", image_url: { url: `data:${img.mediaType};base64,${img.data}` } })),
         {
-            text: `${text ? `Notes:\n${text}\n\n` : ""}Extract the shared expenses${images.length ? " from the image(s) above" : ""}. Write the notes in ${notesLang}.`,
+            type: "text",
+            text: `${text ? `Notes:
+${text}
+
+` : ""}Extract the shared expenses${images.length ? " from the image(s) above" : ""}. Write the notes in ${notesLang}. Answer in JSON.`,
         },
     ];
 
-    // ---- Call Gemini ----
+    // ---- Call DeepSeek ----
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        const response = await ai.models.generateContent({
-            model: MODEL,
-            contents: [{ role: "user", parts }],
-            config: {
-                systemInstruction: SYSTEM,
-                responseMimeType: "application/json",
-                responseJsonSchema: SCHEMA,
+        const apiRes = await fetch(API_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
             },
+            body: JSON.stringify({
+                model: MODEL,
+                messages: [
+                    { role: "system", content: SYSTEM },
+                    { role: "user", content },
+                ],
+                response_format: { type: "json_object" },
+                max_tokens: 8192,
+            }),
         });
+        const result = await apiRes.json().catch(() => null);
 
-        const finish = response.candidates?.[0]?.finishReason;
-        if (response.promptFeedback?.blockReason || finish === "SAFETY") {
+        if (!apiRes.ok) {
+            const msg = apiMessage(result, apiRes.status);
+            console.error(`DeepSeek API error ${apiRes.status}:`, msg);
+            if (apiRes.status === 401 || apiRes.status === 403) {
+                return res.status(500).json({ error: "not_configured" });
+            }
+            if (apiRes.status === 429) {
+                return res.status(429).json({ error: "rate_limited" });
+            }
+            if (apiRes.status === 400 || apiRes.status === 404 || apiRes.status === 422) {
+                // Pass the API's reason back so problems are visible without digging through logs.
+                return res.status(400).json({ error: "ai_bad_request", detail: msg.slice(0, 300) });
+            }
+            return res.status(502).json({ error: "failed", detail: `DeepSeek ${apiRes.status}: ${msg.slice(0, 200)}` });
+        }
+
+        const choice = result?.choices?.[0];
+        const finish = choice?.finish_reason;
+        const answer = choice?.message?.content;
+        if (finish === "content_filter") {
             return res.status(422).json({ error: "refused" });
         }
-        if (finish === "MAX_TOKENS") {
+        if (finish === "length") {
             return res.status(422).json({ error: "bad_input" });
         }
-        if (!response.text) {
-            console.error("Gemini returned no text. finishReason:", finish);
+        if (!answer) {
+            console.error("DeepSeek returned no text. finish_reason:", finish);
             return res.status(502).json({ error: "failed", detail: `empty answer from ${MODEL} (${finish || "no finish reason"})` });
         }
 
         let data;
         try {
-            data = JSON.parse(response.text);
+            data = JSON.parse(answer);
         } catch (_) {
-            console.error("Gemini returned invalid JSON:", response.text.slice(0, 500));
+            console.error("DeepSeek returned invalid JSON:", answer.slice(0, 500));
             return res.status(502).json({ error: "failed", detail: `${MODEL} returned unreadable data` });
         }
         if (!Array.isArray(data.people) || !Array.isArray(data.expenses)) {
@@ -145,20 +148,6 @@ export default async function handler(req, res) {
         }
         return res.status(200).json(data);
     } catch (error) {
-        if (error instanceof ApiError) {
-            console.error(`Gemini API error ${error.status}:`, error.message);
-            if (error.status === 401 || error.status === 403 || /API_KEY_INVALID/.test(error.message)) {
-                return res.status(500).json({ error: "not_configured" });
-            }
-            if (error.status === 429) {
-                return res.status(429).json({ error: "rate_limited" });
-            }
-            if (error.status === 400 || error.status === 404) {
-                // Pass the API's reason back so problems are visible without digging through logs.
-                return res.status(400).json({ error: "ai_bad_request", detail: apiMessage(error).slice(0, 300) });
-            }
-            return res.status(502).json({ error: "failed", detail: `Gemini ${error.status}: ${apiMessage(error).slice(0, 200)}` });
-        }
         console.error("parse failed:", error);
         return res.status(500).json({ error: "failed", detail: String(error?.message || error).slice(0, 200) });
     }

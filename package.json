@@ -1,8 +1,5 @@
 {
   "name": "splitbill",
   "private": true,
-  "type": "module",
-  "dependencies": {
-    "@google/genai": "^3.6.1"
-  }
+  "type": "module"
 }
