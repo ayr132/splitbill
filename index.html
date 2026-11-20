@@ -8,6 +8,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap">
+    <!-- daisyUI components (steps, rotating text, 3D hover), loaded on their own so the rest of the app keeps its look -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.7.50/components/steps.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.7.50/components/textrotate.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.7.50/components/hover3d.css">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -35,8 +39,50 @@
     <main class="wrap">
         <!-- Welcome (only while the trip has no friends yet) -->
         <section class="card welcome hidden" id="welcome">
-            <h2 data-i18n="welcomeTitle"></h2>
+            <h2 class="welcome-title">
+                <span data-i18n="welcomeTitleLead"></span>
+                <span class="text-rotate welcome-rotate">
+                    <span>
+                        <span data-i18n="welcomeRotate1"></span>
+                        <span data-i18n="welcomeRotate2"></span>
+                        <span data-i18n="welcomeRotate3"></span>
+                        <span data-i18n="welcomeRotate4"></span>
+                    </span>
+                </span>
+            </h2>
             <p class="muted" data-i18n="welcomeDesc"></p>
+            <ol class="steps welcome-steps">
+                <li class="step step-primary" style="--i:0">
+                    <span class="step-icon"><span class="ico ico-user-plus" aria-hidden="true"></span><span class="step-num" aria-hidden="true">1</span></span>
+                    <div class="hover-3d step-tilt">
+                        <div class="step-card">
+                            <h3 data-i18n="welcomeStepTitle1"></h3>
+                            <p data-i18n="welcomeStep1"></p>
+                        </div>
+                        <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+                    </div>
+                </li>
+                <li class="step step-primary" style="--i:1">
+                    <span class="step-icon"><span class="ico ico-bag" aria-hidden="true"></span><span class="step-num" aria-hidden="true">2</span></span>
+                    <div class="hover-3d step-tilt">
+                        <div class="step-card">
+                            <h3 data-i18n="welcomeStepTitle2"></h3>
+                            <p data-i18n="welcomeStep2"></p>
+                        </div>
+                        <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+                    </div>
+                </li>
+                <li class="step step-primary" style="--i:2">
+                    <span class="step-icon"><span class="ico ico-share" aria-hidden="true"></span><span class="step-num" aria-hidden="true">3</span></span>
+                    <div class="hover-3d step-tilt">
+                        <div class="step-card">
+                            <h3 data-i18n="welcomeStepTitle3"></h3>
+                            <p data-i18n="welcomeStep3"></p>
+                        </div>
+                        <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+                    </div>
+                </li>
+            </ol>
             <div class="glass-wrap fx-layer">
                 <button type="button" class="glass-btn start-btn" id="getStartedBtn">
                     <span class="text" data-i18n="getStarted"></span>
