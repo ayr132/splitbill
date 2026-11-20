@@ -91,6 +91,7 @@ document.querySelectorAll("[data-lang]").forEach(b => b.addEventListener("click"
         renderDraft();
     }
     if (aiData && $("aiDialog").open) renderAiPreview();
+    if ($("exportDialog").open) openExport();
     // Re-translate any error message that's currently on screen.
     setDialogError(dialogErrorState.key, dialogErrorState.vars);
     aiError(aiErrorState.key, aiErrorState.vars);
@@ -131,6 +132,7 @@ function render() {
     updateDocTitle();
     renderPeople();
     renderShared();
+    renderSpend();
     renderIndividual();
     renderOwe();
     renderSummary();
@@ -224,6 +226,106 @@ function renderShared() {
     }).join("");
 }
 
+// ---------- Spending pie (below the shared expenses) ----------
+let spendSlices = [];   // what each pie slice stands for, for the tooltip
+
+const pct = (part, whole) => `${(whole ? (part / whole) * 100 : 0).toFixed(1).replace(/\.0$/, "")}%`;
+
+function renderSpend() {
+    const r = lastResult;
+    const order = new Map(state.people.map((p, i) => [p.id, i]));
+    // One slice per bill, grouped by payer so each person's bills sit together.
+    spendSlices = state.expenses
+        .map(exp => ({ exp, total: r.perExpense.get(exp.id).total, payer: person(exp.payer) }))
+        .filter(s => s.total > 0)
+        .sort((a, b) => (order.get(a.exp.payer) ?? 1e9) - (order.get(b.exp.payer) ?? 1e9));
+    const total = spendSlices.reduce((a, s) => a + s.total, 0);
+    $("spendCard").classList.toggle("hidden", !total);
+    hidePieTip();
+    if (!total) return;
+
+    const cx = 100, cy = 100, rad = 96;
+    const point = a => [cx + rad * Math.sin(a), cy - rad * Math.cos(a)];
+    let angle = 0;
+    const paths = spendSlices.map((s, i) => {
+        const color = s.payer ? s.payer.color : "#ccc";
+        const label = `${s.exp.name}: ${money(s.total)} (${pct(s.total, total)}), ${t("paidBy")} ${s.payer ? s.payer.name : t("removed")}`;
+        const common = `class="slice" data-slice="${i}" fill="${color}" tabindex="0" aria-label="${esc(label)}"`;
+        if (spendSlices.length === 1) return `<circle ${common} cx="${cx}" cy="${cy}" r="${rad}"/>`;
+        const start = angle;
+        angle += (s.total / total) * Math.PI * 2;
+        const [x1, y1] = point(start), [x2, y2] = point(angle);
+        const large = angle - start > Math.PI ? 1 : 0;
+        return `<path ${common} d="M${cx},${cy} L${x1.toFixed(2)},${y1.toFixed(2)} A${rad},${rad} 0 ${large} 1 ${x2.toFixed(2)},${y2.toFixed(2)} Z"/>`;
+    });
+    const pie = $("spendPie");
+    pie.innerHTML = paths.join("");
+    pie.setAttribute("aria-label", t("spendAria", { n: spendSlices.length, amt: `${state.currency}${(total / 100).toFixed(2)}` }));
+
+    // Legend: one group per payer, listing the bills they paid.
+    const groups = [];
+    spendSlices.forEach((s, i) => {
+        const key = s.exp.payer;
+        let g = groups.find(x => x.key === key);
+        if (!g) groups.push(g = { key, payer: s.payer, sum: 0, rows: [] });
+        g.sum += s.total;
+        g.rows.push({ s, i });
+    });
+    $("spendLegend").innerHTML = groups.map(g => `
+        <div class="spend-group">
+            <div class="spend-payer">${pill(g.key)} <span class="muted">${t("spendPaidShare", { amt: money(g.sum), pct: pct(g.sum, total) })}</span></div>
+            <ul>${g.rows.map(({ s, i }) => `
+                <li data-slice="${i}">
+                    <span class="swatch" style="--pc:${s.payer ? s.payer.color : "#ccc"}" aria-hidden="true"></span>
+                    <span class="spend-name">${esc(s.exp.name)}</span>
+                    <span class="num">${money(s.total)}</span>
+                    <span class="num spend-pct">${pct(s.total, total)}</span>
+                </li>`).join("")}
+            </ul>
+        </div>`).join("") + `
+        <div class="spend-total"><span>${t("total")}</span><span class="num">${money(total)}</span><span class="num spend-pct">100%</span></div>`;
+}
+
+function showPieTip(i, evt) {
+    const s = spendSlices[i];
+    if (!s) return;
+    const total = spendSlices.reduce((a, x) => a + x.total, 0);
+    const tip = $("pieTip");
+    tip.innerHTML = `<b>${esc(s.exp.name)}</b>
+        <div class="tip-row"><span>${money(s.total)}</span><span class="muted">${pct(s.total, total)}</span></div>
+        <div>${t("paidBy")} ${pill(s.exp.payer)}</div>`;
+    tip.classList.remove("hidden");
+    const wrap = $("spendPie").parentElement.getBoundingClientRect();
+    let x, y;
+    if (evt && evt.clientX !== undefined) { x = evt.clientX - wrap.left; y = evt.clientY - wrap.top; }
+    else { const b = evt.target.getBoundingClientRect(); x = b.left + b.width / 2 - wrap.left; y = b.top + b.height / 2 - wrap.top; }
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = `${Math.max(0, Math.min(wrap.width - w, x + 12))}px`;
+    tip.style.top = `${Math.max(0, y - h - 12)}px`;
+    document.querySelectorAll("[data-slice]").forEach(el => el.classList.toggle("active", el.dataset.slice === String(i)));
+}
+function hidePieTip() {
+    $("pieTip").classList.add("hidden");
+    document.querySelectorAll("[data-slice].active").forEach(el => el.classList.remove("active"));
+}
+$("spendPie").addEventListener("pointermove", e => {
+    const i = e.target.closest("[data-slice]")?.dataset.slice;
+    i === undefined ? hidePieTip() : showPieTip(Number(i), e);
+});
+$("spendPie").addEventListener("pointerleave", hidePieTip);
+$("spendPie").addEventListener("focusin", e => {
+    const i = e.target.closest("[data-slice]")?.dataset.slice;
+    if (i !== undefined) showPieTip(Number(i), { target: e.target });
+});
+$("spendPie").addEventListener("focusout", hidePieTip);
+$("spendLegend").addEventListener("pointerover", e => {
+    const i = e.target.closest("[data-slice]")?.dataset.slice;
+    if (i === undefined) return hidePieTip();
+    const slice = $("spendPie").querySelector(`[data-slice="${i}"]`);
+    showPieTip(Number(i), { target: slice });
+});
+$("spendLegend").addEventListener("pointerleave", hidePieTip);
+
 // ---------- 2. Individual expenses ----------
 function renderIndividual() {
     const r = lastResult;
@@ -259,8 +361,11 @@ function renderOwe() {
         $("oweMatrix").innerHTML = `<p class="muted">${t("needTwo")}</p>`;
         $("simplifiedList").innerHTML = $("pairwiseList").innerHTML = "";
         $("flowList").innerHTML = "";
+        $("exportImgBtn").disabled = true;
         return;
     }
+
+    $("exportImgBtn").disabled = false;
 
     // Matrix: row owes column
     const head = `<tr><th class="corner">${t("owesArrow")}</th>${people.map(p => `<th>${pill(p.id)}</th>`).join("")}<th>${t("totalOwes")}</th></tr>`;
@@ -983,6 +1088,198 @@ $("aiDialog").addEventListener("paste", e => {
         e.preventDefault();
         addAiFiles(files);
     }
+});
+
+// ================= Export owed amounts as an image =================
+// Drawn straight onto a canvas (always in the light theme) so it works offline and needs no library.
+const IMG = {
+    w: 1080, pad: 64, page: "#c8c0e2", card: "#ece8f5", bar: "#746895", line: "#d6cfe7", soft: "#e0dbee",
+    text: "#3d3753", muted: "#6f6889", pos: "#2f7d4f", posBg: "#d7efe0", neg: "#a5531a", negBg: "#f8e3d1",
+    font: '"Quicksand", system-ui, sans-serif',
+};
+let exportFormat = "png";
+
+const moneyText = c => `${c < 0 ? "-" : ""}${state.currency}${(Math.abs(c) / 100).toFixed(2)}`;
+
+function fitText(ctx, str, maxW) {
+    if (ctx.measureText(str).width <= maxW) return str;
+    while (str.length > 1 && ctx.measureText(str + "…").width > maxW) str = str.slice(0, -1);
+    return str + "…";
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+}
+
+// Lays the image out as a list of rows, then draws them; the canvas height follows the content.
+function drawExport(canvas, who) {
+    const r = lastResult;
+    const people = state.people;
+    const i = who === "all" ? -1 : (r.idx.get(who) ?? -1);
+    const p = i >= 0 ? people[i] : null;
+    const { w, pad } = IMG;
+    const inner = w - pad * 2;
+    const rows = [];   // { h, draw(ctx, y) }
+    const font = (size, weight = 600) => `${weight} ${size}px ${IMG.font}`;
+    const dot = (ctx, x, y, color, size = 22) => {
+        ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x + size / 2, y, size / 2, 0, Math.PI * 2); ctx.fill();
+    };
+    const right = (ctx, text, x, y) => { ctx.textAlign = "right"; ctx.fillText(text, x, y); ctx.textAlign = "left"; };
+    const sectionTitle = text => rows.push({ h: 72, draw(ctx, y) {
+        ctx.fillStyle = IMG.text; ctx.font = font(32, 700); ctx.fillText(text, pad, y + 48);
+    } });
+    const rule = () => rows.push({ h: 2, draw(ctx, y) { ctx.fillStyle = IMG.line; ctx.fillRect(pad, y, inner, 2); } });
+    const netColor = c => (c > 0 ? IMG.pos : c < 0 ? IMG.neg : IMG.muted);
+    const transfers = r.simplified.filter(x => !p || x.from === p.id || x.to === p.id);
+
+    if (!p) {
+        // Everyone: one row per person with what they owe in total and their net.
+        const cols = [inner * 0.56, inner * 0.78, inner];
+        sectionTitle(t("tabOwe"));
+        rows.push({ h: 48, draw(ctx, y) {
+            ctx.font = font(22); ctx.fillStyle = IMG.muted;
+            ctx.fillText(t("thName"), pad, y + 30);
+            right(ctx, fitText(ctx, t("totalOwes"), inner * 0.21), pad + cols[1], y + 30);
+            right(ctx, fitText(ctx, t("net"), inner * 0.2), pad + cols[2], y + 30);
+        } });
+        rule();
+        people.forEach((q, k) => rows.push({ h: 72, draw(ctx, y) {
+            dot(ctx, pad, y + 36, q.color);
+            ctx.font = font(30); ctx.fillStyle = IMG.text;
+            ctx.fillText(fitText(ctx, q.name, cols[0] - 48), pad + 38, y + 46);
+            ctx.font = font(28, 500);
+            right(ctx, moneyText(r.owes[k]), pad + cols[1], y + 46);
+            ctx.font = font(28, 700); ctx.fillStyle = netColor(r.net[k]);
+            right(ctx, moneyText(r.net[k]), pad + cols[2], y + 46);
+        } }));
+        rule();
+        rows.push({ h: 44, draw(ctx, y) {
+            ctx.font = font(20, 500); ctx.fillStyle = IMG.muted; ctx.fillText(`${t("net")} ${t("netHint")}`, pad, y + 32);
+        } });
+    } else {
+        // One person: name, a net headline, then their two totals and the net.
+        rows.push({ h: 96, draw(ctx, y) {
+            dot(ctx, pad, y + 50, p.color, 36);
+            ctx.font = font(52, 700); ctx.fillStyle = IMG.text;
+            ctx.fillText(fitText(ctx, p.name, inner - 56), pad + 56, y + 68);
+        } });
+        rows.push({ h: 100, draw(ctx, y) {
+            const c = r.net[i];
+            const text = c > 0 ? t("getsBack", { amt: moneyText(c) }) : c < 0 ? t("owes", { amt: moneyText(-c) }) : t("allSquare");
+            ctx.font = font(36, 700);
+            const tw = Math.min(ctx.measureText(text).width, inner - 56);
+            ctx.fillStyle = c > 0 ? IMG.posBg : c < 0 ? IMG.negBg : IMG.soft;
+            roundRect(ctx, pad, y + 10, tw + 56, 68, 34); ctx.fill();
+            ctx.fillStyle = netColor(c); ctx.fillText(fitText(ctx, text, inner - 56), pad + 28, y + 57);
+        } });
+        const stat = (label, value, color = IMG.text) => rows.push({ h: 72, draw(ctx, y) {
+            ctx.font = font(28, 500); ctx.fillStyle = IMG.muted;
+            ctx.fillText(fitText(ctx, label, inner * 0.62), pad, y + 46);
+            ctx.font = font(30, 700); ctx.fillStyle = color;
+            right(ctx, value, pad + inner, y + 46);
+        } });
+        rule();
+        stat(t("totalOwes"), moneyText(r.owes[i]));
+        stat(t("totalOwedTo"), moneyText(r.owedTo[i]));
+        rule();
+        stat(`${t("net")} ${t("netHint")}`, moneyText(r.net[i]), netColor(r.net[i]));
+    }
+
+    // Who pays whom (fewest transfers), limited to this person when exporting one person.
+    rows.push({ h: 24, draw() {} });
+    sectionTitle(t("imgSettle"));
+    if (!transfers.length) {
+        rows.push({ h: 64, draw(ctx, y) { ctx.font = font(28, 500); ctx.fillStyle = IMG.muted; ctx.fillText(t("imgNothing"), pad, y + 42); } });
+    }
+    transfers.forEach(x => rows.push({ h: 72, draw(ctx, y) {
+        const from = people[r.idx.get(x.from)], to = people[r.idx.get(x.to)];
+        let text, color;
+        if (!p) { text = `${from.name} ${t("pays")} ${to.name}`; color = from.color; }
+        else if (x.from === p.id) { text = t("imgOwesTo", { name: to.name }); color = to.color; }
+        else { text = t("imgGetsFrom", { name: from.name }); color = from.color; }
+        ctx.fillStyle = IMG.soft;
+        roundRect(ctx, pad, y + 6, inner, 60, 30); ctx.fill();
+        dot(ctx, pad + 20, y + 36, color);
+        ctx.font = font(28); ctx.fillStyle = IMG.text;
+        ctx.fillText(fitText(ctx, text, inner - 300), pad + 62, y + 46);
+        ctx.font = font(30, 700);
+        ctx.fillStyle = p ? (x.from === p.id ? IMG.neg : IMG.pos) : IMG.text;
+        right(ctx, moneyText(x.amount), pad + inner - 28, y + 46);
+    } }));
+
+    // Size the canvas to fit, then paint the frame, header and rows.
+    const headerH = 150, footerH = 72, margin = 32;
+    const bodyH = rows.reduce((a, row) => a + row.h, 0);
+    const h = margin * 2 + headerH + 24 + bodyH + footerH;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = IMG.page; ctx.fillRect(0, 0, w, h);
+    ctx.save();
+    roundRect(ctx, margin, margin, w - margin * 2, h - margin * 2, 36);
+    ctx.fillStyle = IMG.card; ctx.fill();
+    ctx.clip();
+    ctx.fillStyle = IMG.bar; ctx.fillRect(margin, margin, w - margin * 2, headerH);
+    ctx.restore();
+    ctx.textAlign = "left";
+    ctx.fillStyle = "rgba(255,255,255,0.75)"; ctx.font = font(24);
+    ctx.fillText(t("appName"), pad, margin + 52);
+    ctx.fillStyle = "#fff"; ctx.font = font(44, 700);
+    ctx.fillText(fitText(ctx, state.title || t("tabOwe"), inner), pad, margin + 112);
+    let y = margin + headerH + 24;
+    rows.forEach(row => { row.draw(ctx, y); y += row.h; });
+    ctx.font = font(20, 500); ctx.fillStyle = IMG.muted;
+    const locale = window.I18n.getLang() === "ms" ? "ms-MY" : "en-GB";
+    ctx.fillText(new Date().toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" }), pad, h - margin - 30);
+}
+
+async function refreshExport() {
+    try { await document.fonts.load(`600 30px ${IMG.font}`); } catch (_) { /* fall back to the system font */ }
+    drawExport($("exportCanvas"), $("exportWho").value);
+}
+
+function openExport() {
+    const sel = $("exportWho");
+    const prev = sel.value;
+    sel.innerHTML = `<option value="all">${esc(t("exportEveryone"))}</option>` +
+        state.people.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
+    sel.value = [...sel.options].some(o => o.value === prev) ? prev : "all";
+    if (!$("exportDialog").open) $("exportDialog").showModal();
+    refreshExport();
+}
+
+function downloadExport() {
+    const who = $("exportWho").value;
+    const name = who === "all" ? (state.title || "everyone") : (person(who)?.name || "person");
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "splitbill";
+    const ext = exportFormat === "jpeg" ? "jpg" : "png";
+    $("exportCanvas").toBlob(blob => {
+        if (!blob) return;
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${slug}-owed.${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }, `image/${exportFormat}`, 0.92);
+}
+
+$("exportImgBtn").addEventListener("click", openExport);
+$("exportCancelBtn").addEventListener("click", () => $("exportDialog").close());
+$("exportDownloadBtn").addEventListener("click", downloadExport);
+$("exportWho").addEventListener("change", refreshExport);
+$("exportFormat").addEventListener("click", e => {
+    const b = e.target.closest("[data-format]");
+    if (!b) return;
+    exportFormat = b.dataset.format;
+    $("exportFormat").querySelectorAll("button").forEach(x => x.classList.toggle("active", x === b));
 });
 
 // ================= Init =================

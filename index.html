@@ -89,6 +89,18 @@
                 </div>
             </div>
             <div id="expenseList" class="expense-list"></div>
+
+            <section class="card spend-card hidden" id="spendCard" aria-labelledby="spendTitle">
+                <h3 id="spendTitle" class="card-title" data-i18n="spendTitle"></h3>
+                <p class="muted small-text spend-desc" data-i18n="spendDesc"></p>
+                <div class="spend-body">
+                    <div class="pie-wrap">
+                        <svg id="spendPie" class="pie" viewBox="0 0 200 200" role="img"></svg>
+                        <div id="pieTip" class="pie-tip hidden" role="status"></div>
+                    </div>
+                    <div id="spendLegend" class="spend-legend"></div>
+                </div>
+            </section>
         </section>
 
         <!-- 2. Individual expenses record -->
@@ -109,6 +121,7 @@
                     <h2 data-i18n="oweTitle"></h2>
                     <p class="muted" data-i18n-html="oweDesc"></p>
                 </div>
+                <button type="button" class="btn" id="exportImgBtn" data-i18n="exportImg"></button>
             </div>
             <div class="card table-scroll" id="oweMatrix"></div>
 
@@ -192,6 +205,28 @@
                     <button type="button" class="btn ghost" id="aiReplaceBtn" data-i18n="aiReplace"></button>
                     <button type="button" class="btn" id="aiAddBtn" data-i18n="aiAdd"></button>
                 </div>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- Export owed totals as an image -->
+    <dialog id="exportDialog" aria-labelledby="exportTitle">
+        <div class="ai-body">
+            <h2 id="exportTitle" data-i18n="exportImgTitle"></h2>
+            <div class="grid-2">
+                <label class="field"><span data-i18n="exportWho"></span><select id="exportWho"></select></label>
+                <div class="field"><span data-i18n="exportFormat"></span>
+                    <div class="seg" id="exportFormat">
+                        <button type="button" data-format="png" class="active">PNG</button>
+                        <button type="button" data-format="jpeg">JPG</button>
+                    </div>
+                </div>
+            </div>
+            <canvas id="exportCanvas" class="export-preview"></canvas>
+            <div class="dialog-actions">
+                <span class="spacer"></span>
+                <button type="button" class="btn ghost" id="exportCancelBtn" data-i18n="close"></button>
+                <button type="button" class="btn" id="exportDownloadBtn" data-i18n="download"></button>
             </div>
         </div>
     </dialog>

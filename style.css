@@ -633,3 +633,40 @@ button:not(.glass-btn):not(.name-btn):not(.remove-btn):active:not(:disabled), .f
     .expense-body { flex-direction: column-reverse; }
     .person-grid { grid-template-columns: 1fr; }
 }
+
+/* ---------- Spending pie ---------- */
+.spend-card { margin-top: 8px; }
+.spend-desc { text-align: center; margin-bottom: 16px; }
+.spend-body { display: grid; grid-template-columns: minmax(180px, 260px) 1fr; gap: 28px; align-items: start; }
+.pie-wrap { position: relative; }
+.pie { width: 100%; height: auto; display: block; overflow: visible; }
+.pie .slice { stroke: var(--card); stroke-width: 2; stroke-linejoin: round; cursor: pointer; transition: opacity 0.15s; outline: none; }
+.pie:has(.slice.active) .slice:not(.active) { opacity: 0.45; }
+.pie .slice:focus-visible { stroke: var(--text); }
+.pie-tip {
+    position: absolute; z-index: 2; pointer-events: none; min-width: 150px; max-width: 220px;
+    background: var(--field); color: var(--text); border-radius: 14px; padding: 8px 12px;
+    font-size: 0.85rem; box-shadow: var(--shadow); display: grid; gap: 4px;
+}
+.pie-tip .tip-row { display: flex; justify-content: space-between; gap: 12px; font-variant-numeric: tabular-nums; font-weight: 700; }
+.spend-legend { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.spend-payer { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.9rem; }
+.spend-group ul { list-style: none; margin: 6px 0 0; padding: 0; }
+.spend-group li, .spend-total {
+    display: grid; grid-template-columns: 12px minmax(0, 1fr) auto 52px; gap: 10px; align-items: center;
+    padding: 6px 8px; border-radius: 10px; font-size: 0.92rem;
+}
+.spend-group li.active { background: var(--soft); }
+.spend-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spend-pct { color: var(--muted); }
+.swatch { width: 12px; height: 12px; border-radius: 4px; background: var(--pc); }
+.spend-total { grid-template-columns: minmax(0, 1fr) auto 52px; border-top: 1px solid var(--border); border-radius: 0; font-weight: 700; padding-top: 10px; }
+
+/* ---------- Export image ---------- */
+#exportDialog select { width: 100%; }
+.export-preview { width: 100%; height: auto; border-radius: 16px; box-shadow: var(--raise); max-height: 55vh; object-fit: contain; background: var(--soft); }
+
+@media (max-width: 620px) {
+    .spend-body { grid-template-columns: 1fr; }
+    .pie-wrap { max-width: 240px; margin: 0 auto; width: 100%; }
+}
